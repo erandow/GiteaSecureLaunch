@@ -13,6 +13,9 @@ certbot-webroot/
 # Environment file (contains secrets)
 .env
 
+# Docker compose symlink (dynamically created during deployment)
+docker-compose.yml
+
 # Backup files
 *.tar.gz
 *.bak
