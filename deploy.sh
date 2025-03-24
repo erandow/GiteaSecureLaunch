@@ -191,6 +191,7 @@ elif [ "$deployment_type" = "3" ]; then
     ln -sf docker-compose.domain.yml docker-compose.yml
     
     echo "Your Gitea instance will be available at: https://$DOMAIN"
+fi
 
 # Remove the checks to adjust volumes since we now use dedicated files
 # that already have the correct volume mounts
