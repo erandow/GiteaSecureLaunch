@@ -3,7 +3,7 @@ version: "3"
 services:
   gitea:
     image: gitea/gitea:latest
-    container_name: gitea
+    container_name: gitea_production
     environment:
       - USER_UID=1000
       - USER_GID=1000
