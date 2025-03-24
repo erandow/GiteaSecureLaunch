@@ -1,0 +1,22 @@
+# Data directories
+gitea_data/
+postgres_data/
+certs/
+backups/
+certbot-webroot/
+
+# Sensitive files
+*.pem
+*.key
+*.crt
+
+# Environment file (contains secrets)
+.env
+
+# Backup files
+*.tar.gz
+*.bak
+
+# OS specific files
+.DS_Store
+Thumbs.db 
