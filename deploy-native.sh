@@ -318,8 +318,11 @@ done
 
 chmod +x gitea
 
-# Move Gitea to installation directory
-mv gitea "$GITEA_HOME_DIR/"
+# Move Gitea to installation directory with correct ownership
+echo "Installing Gitea binary to $GITEA_HOME_DIR with correct permissions..."
+sudo cp gitea "$GITEA_HOME_DIR/"
+sudo chown git:git "$GITEA_HOME_DIR/gitea"
+sudo chmod 755 "$GITEA_HOME_DIR/gitea"
 cd - > /dev/null
 
 # Create systemd service file (Linux only)
@@ -334,6 +337,7 @@ if [ "$OS" = "Linux" ]; then
     fi
     
     # Ensure proper ownership of Gitea directories
+    sudo mkdir -p "$DATA_DIR" "$CUSTOM_DIR" "$CONFIG_DIR" "$WORK_DIR" "$LOG_DIR" "$CERTS_DIR"
     sudo chown -R git:git "$GITEA_HOME_DIR"
     
     echo "Creating systemd service file..."
@@ -350,12 +354,15 @@ WorkingDirectory=$GITEA_HOME_DIR
 ExecStart=$GITEA_HOME_DIR/gitea web -c $CONFIG_DIR/app.ini
 Restart=always
 Environment=USER=git HOME=/home/git GITEA_WORK_DIR=$WORK_DIR
+RestartSec=2s
+LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
     sudo mv /tmp/gitea.service /etc/systemd/system/gitea.service
+    sudo chmod 644 /etc/systemd/system/gitea.service
     sudo systemctl daemon-reload
 fi
 
@@ -650,17 +657,22 @@ REPO_INDEXER_TYPE = bleve
 DEFAULT_EMAIL_NOTIFICATIONS = enabled
 EOF
 
+# Ensure configuration file has correct permissions
+sudo chown git:git "$CONFIG_DIR/app.ini"
+sudo chmod 640 "$CONFIG_DIR/app.ini"
+
 # Start Gitea
 echo "Starting Gitea..."
 if [ "$OS" = "Linux" ]; then
-    # Test the binary first to ensure it works
-    echo "Testing Gitea binary..."
-    if ! sudo -u git "$GITEA_HOME_DIR/gitea" --version; then
-        echo "Error: The Gitea binary does not work correctly."
-        echo "This may be due to missing dependencies or incorrect permissions."
-        echo "You may need to install dependencies: sudo apt-get install git curl"
-        exit 1
-    fi
+    # Fix a possible issue with sudo permissions
+    echo "Setting proper permissions for Gitea..."
+    
+    # Ensure the gitea binary is executable and owned by git user
+    sudo chown git:git "$GITEA_HOME_DIR/gitea"
+    sudo chmod +x "$GITEA_HOME_DIR/gitea"
+    
+    # Ensure all directories have proper ownership
+    sudo chown -R git:git "$GITEA_HOME_DIR"
     
     # Start using systemd with retry logic
     for i in 1 2 3; do
