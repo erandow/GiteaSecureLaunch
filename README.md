@@ -1,23 +1,29 @@
-# Gitea Self-Hosted Deployment
+# GiteaSecureLaunch
 
-This project provides an automated way to deploy a personal Gitea Git service with Docker, HTTPS, and PostgreSQL.
+A streamlined solution for deploying Gitea with automated HTTPS configuration. No domain name required!
+
+This project provides an easy, automated way to deploy a personal Gitea Git service with Docker, secure HTTPS, and PostgreSQL database. Set up in minutes with a simple deployment script.
 
 ## Features
 
 - Gitea Git server deployment using Docker
-- Support for both local development (HTTP) and production (HTTPS) environments
+- Flexible deployment options:
+  - Local HTTP for basic testing
+  - Local HTTPS with localhost (no domain required)
+  - Production HTTPS with custom domain (optional)
+  - Production HTTPS with IP address (no domain required)
 - PostgreSQL database for persistent data storage
 - SSH access for Git operations
 - Automated setup script with environment detection
-- Let's Encrypt integration for production deployments
+- Let's Encrypt integration for production deployments with domains
 
 ## Prerequisites
 
-- A Linux server (physical or virtual) with public IP address (for production)
+- A Linux server (physical or virtual)
 - Docker and Docker Compose installed
-- Domain name pointing to your server (or local hosts file modified for testing)
 - Basic knowledge of Linux command line
-- Open ports: 443 (HTTPS) or 3000 (HTTP) and 2222 (SSH)
+- For domain-based deployment: Domain name (optional)
+- Open ports: 3000 (HTTP) or 443 (HTTPS) and 2222 (SSH)
 
 ## Installation
 
@@ -36,7 +42,6 @@ nano .env
 
 Modify the following settings:
 
-- `DOMAIN`: Your Gitea domain (e.g., git.example.com)
 - `POSTGRES_*`: Database credentials
 - `APP_NAME`: Name of your Gitea instance
 - `ADMIN_*`: Initial admin credentials
@@ -48,32 +53,51 @@ Modify the following settings:
 ```
 
 4. Choose your deployment type:
-   - **Local development**: Uses HTTP on port 3000, ideal for testing
-   - **Production server**: Uses HTTPS on port 443 with SSL certificates
+   - **Local development (HTTP)**: Simple HTTP on port 3000
+   - **Local HTTPS with localhost**: Secure HTTPS on port 443 (no domain required)
+   - **Production server with domain**: HTTPS on port 443 with custom domain
+   - **Production server with IP**: HTTPS on port 443 using server IP (no domain required)
 
-The script will automatically configure Gitea based on your selection:
+The script will automatically configure Gitea based on your selection.
 
-**For local development:**
+### Local Development (HTTP)
 
-- Configure HTTP protocol
-- Expose port 3000
-- Optionally add an entry to your hosts file
-- Skip SSL certificate generation
+- HTTP protocol on port 3000
+- Uses localhost or custom local domain
+- No SSL certificates required
 
-**For production:**
+### Local HTTPS with localhost
 
-- Configure HTTPS protocol
-- Generate SSL certificates or use Let's Encrypt
-- Expose port 443
-- Configure secure settings
+- HTTPS protocol on port 443
+- Uses localhost with self-signed certificates
+- No custom domain required
+- Secure local development
+
+### Production Server with Domain
+
+- HTTPS protocol on port 443
+- Requires domain name
+- Self-signed or Let's Encrypt certificates
+- Full security features
+
+### Production Server with IP Address
+
+- HTTPS protocol on port 443
+- Uses your server's IP address
+- Self-signed certificates for your IP
+- No domain name required
+- Full security features
 
 ## Post-Installation
 
 After running the script, visit your Gitea URL to complete the setup:
 
-1. The database settings should be pre-filled from your environment variables
-2. Configure the site title, repository root path, and other settings as desired
-3. Complete the installation
+- Local HTTP: http://localhost:3000 or http://your-local-domain:3000
+- Local HTTPS: https://localhost
+- Production with domain: https://your-domain.com
+- Production with IP: https://your-server-ip
+
+The database settings will be pre-filled from your environment variables.
 
 ## Directory Structure
 
@@ -164,4 +188,3 @@ This project is MIT licensed.
 ## Need Help?
 
 If you encounter any issues or have questions, please open an issue in the GitHub repository.
-# GiteaSecureLaunch

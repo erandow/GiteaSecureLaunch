@@ -24,20 +24,69 @@ fi
 echo "This script will help you configure additional settings for your Gitea instance."
 echo
 
+# Check if using IP address instead of domain name
+IS_IP_BASED=false
+if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    IS_IP_BASED=true
+fi
+
 # Configuration options
 echo "Select an option to configure:"
-echo "1) Use Let's Encrypt certificates instead of self-signed"
-echo "2) Configure email sending"
-echo "3) Enable/disable registration"
-echo "4) Restart Gitea service"
-echo "5) Display Gitea logs"
-echo "6) Exit"
+echo "1) Regenerate SSL certificates"
+if [ "$IS_IP_BASED" = false ]; then
+    echo "2) Use Let's Encrypt certificates instead of self-signed"
+fi
+echo "3) Configure email sending"
+echo "4) Enable/disable registration"
+echo "5) Restart Gitea service"
+echo "6) Display Gitea logs"
+echo "7) Exit"
 echo
 
-read -p "Enter your choice [1-6]: " choice
+read -p "Enter your choice [1-7]: " choice
 
 case $choice in
     1)
+        echo "Regenerating SSL certificates..."
+        
+        if [ "$IS_IP_BASED" = true ]; then
+            echo "Generating new SSL certificates for IP address $DOMAIN..."
+            openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
+                -keyout certs/key.pem -out certs/cert.pem \
+                -subj "/CN=$DOMAIN" \
+                -addext "subjectAltName=IP:$DOMAIN"
+        else
+            read -p "Confirm your domain ($DOMAIN) [Y/n]: " confirm_domain
+            
+            if [[ "$confirm_domain" != "n" && "$confirm_domain" != "N" ]]; then
+                echo "Generating new SSL certificates for $DOMAIN..."
+                openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
+                    -keyout certs/key.pem -out certs/cert.pem \
+                    -subj "/CN=$DOMAIN" \
+                    -addext "subjectAltName=DNS:$DOMAIN,DNS:www.$DOMAIN,IP:127.0.0.1"
+            else
+                echo "Operation cancelled."
+                exit 1
+            fi
+        fi
+        
+        # Fix certificates permissions
+        chmod 600 certs/key.pem
+        chmod 644 certs/cert.pem
+        
+        echo "Restarting Gitea to use the new certificates..."
+        docker compose restart gitea
+        
+        echo "SSL certificates regenerated successfully!"
+        ;;
+        
+    2)
+        if [ "$IS_IP_BASED" = true ]; then
+            echo "Let's Encrypt is not available for IP address-based deployments."
+            echo "Let's Encrypt requires a domain name for validation."
+            exit 1
+        fi
+        
         echo "Setting up Let's Encrypt certificates..."
         echo "Note: This requires a publicly accessible domain with proper DNS configuration."
         read -p "Confirm your domain ($DOMAIN) [Y/n]: " confirm_domain
@@ -81,7 +130,7 @@ EOT
         fi
         ;;
         
-    2)
+    3)
         echo "Configuring email sending..."
         read -p "SMTP Server: " smtp_server
         read -p "SMTP Port: " smtp_port
@@ -105,7 +154,7 @@ EOT"
         docker compose restart gitea
         ;;
         
-    3)
+    4)
         echo "Configure registration settings:"
         echo "1) Disable registrations (private instance)"
         echo "2) Enable registrations for everyone"
@@ -141,18 +190,18 @@ EOT"
         docker compose restart gitea
         ;;
         
-    4)
+    5)
         echo "Restarting Gitea service..."
         docker compose restart gitea
         echo "Gitea service has been restarted."
         ;;
         
-    5)
+    6)
         echo "Displaying Gitea logs (press Ctrl+C to exit):"
         docker compose logs -f gitea
         ;;
         
-    6)
+    7)
         echo "Exiting configuration script."
         exit 0
         ;;

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Gitea Automated Deployment Script
+# GiteaSecureLaunch - Automated Gitea Deployment Script
 set -e
 
-echo "==== Gitea Deployment Script ===="
+echo "==== GiteaSecureLaunch Deployment Script ===="
 echo
 
 # Check if Docker and Docker Compose are installed
@@ -30,17 +30,14 @@ else
     exit 1
 fi
 
-# Ask user to confirm or update domain settings
-read -p "Domain for Gitea [$DOMAIN]: " input_domain
-DOMAIN=${input_domain:-$DOMAIN}
-sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
-
 # Determine if this is a local development or production deployment
 echo
 echo "Deployment Type:"
 echo "1) Local development (HTTP, port 3000)"
-echo "2) Production server (HTTPS, port 443)"
-read -p "Select deployment type [1/2]: " deployment_type
+echo "2) Local HTTPS with localhost (HTTPS, port 443)"
+echo "3) Production server with domain name (HTTPS, port 443)"
+echo "4) Production server with IP address (HTTPS, port 443)"
+read -p "Select deployment type [1/2/3/4]: " deployment_type
 
 # Create a backup of docker-compose.yml
 cp docker-compose.yml docker-compose.yml.bak
@@ -52,6 +49,7 @@ if [ "$deployment_type" = "1" ]; then
     sed -i 's/GITEA__server__PROTOCOL=https/GITEA__server__PROTOCOL=http/g' docker-compose.yml
     sed -i 's|GITEA__server__ROOT_URL=https://|GITEA__server__ROOT_URL=http://|g' docker-compose.yml
     sed -i 's|ROOT_URL=https://\${DOMAIN}/|ROOT_URL=http://\${DOMAIN}:3000/|g' docker-compose.yml
+    sed -i 's|ROOT_URL=http://\${DOMAIN}/|ROOT_URL=http://\${DOMAIN}:3000/|g' docker-compose.yml
     
     # Remove HTTPS-specific environment variables
     sed -i '/GITEA__server__CERT_FILE/d' docker-compose.yml
@@ -60,19 +58,110 @@ if [ "$deployment_type" = "1" ]; then
     # Update port mapping
     sed -i 's/"443:3000"/"3000:3000"/g' docker-compose.yml
     
-    # Ask if user wants to modify hosts file for local testing
-    read -p "Would you like to add an entry to /etc/hosts for local testing? [Y/n]: " add_hosts
-    if [[ "$add_hosts" != "n" && "$add_hosts" != "N" ]]; then
-        echo "Adding entry to /etc/hosts file..."
-        echo "127.0.0.1 $DOMAIN" | sudo tee -a /etc/hosts
-        echo "Entry added: 127.0.0.1 $DOMAIN"
+    # Set domain to localhost if not specified
+    read -p "Domain for Gitea [$DOMAIN] (or leave empty for 'localhost'): " input_domain
+    DOMAIN=${input_domain:-${DOMAIN:-localhost}}
+    sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
+    
+    # Ask if user wants to modify hosts file if not using localhost
+    if [ "$DOMAIN" != "localhost" ]; then
+        read -p "Would you like to add an entry to /etc/hosts for local testing? [Y/n]: " add_hosts
+        if [[ "$add_hosts" != "n" && "$add_hosts" != "N" ]]; then
+            echo "Adding entry to /etc/hosts file..."
+            echo "127.0.0.1 $DOMAIN" | sudo tee -a /etc/hosts
+            echo "Entry added: 127.0.0.1 $DOMAIN"
+        fi
     fi
     
     echo "Local development configuration complete!"
     echo "Your Gitea instance will be available at: http://$DOMAIN:3000"
+
+elif [ "$deployment_type" = "2" ]; then
+    echo "Configuring for local HTTPS with localhost..."
+    
+    # Set domain to localhost
+    DOMAIN="localhost"
+    sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
+    
+    # Update docker-compose.yml for HTTPS
+    sed -i 's/GITEA__server__PROTOCOL=http/GITEA__server__PROTOCOL=https/g' docker-compose.yml
+    sed -i 's|GITEA__server__ROOT_URL=http://|GITEA__server__ROOT_URL=https://|g' docker-compose.yml
+    sed -i 's|ROOT_URL=http://\${DOMAIN}:3000/|ROOT_URL=https://\${DOMAIN}/|g' docker-compose.yml
+    
+    # Add HTTPS-specific environment variables if they don't exist
+    if ! grep -q "GITEA__server__CERT_FILE" docker-compose.yml; then
+        sed -i '/GITEA__server__PROTOCOL=https/a\      - GITEA__server__CERT_FILE=/data/gitea/cert/cert.pem\n      - GITEA__server__KEY_FILE=/data/gitea/cert/key.pem' docker-compose.yml
+    fi
+    
+    # Update port mapping
+    sed -i 's/"3000:3000"/"443:3000"/g' docker-compose.yml
+    
+    # Generate self-signed certificates for localhost
+    echo "Generating SSL certificates for localhost..."
+    openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
+        -keyout certs/key.pem -out certs/cert.pem \
+        -subj "/CN=localhost" \
+        -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+    
+    # Fix certificates permissions
+    chmod 600 certs/key.pem
+    chmod 644 certs/cert.pem
+    
+    echo "Certificates generated successfully."
+    echo "Your Gitea instance will be available at: https://localhost"
+    echo "Note: You will need to accept the self-signed certificate warning in your browser."
+    
+elif [ "$deployment_type" = "4" ]; then
+    echo "Configuring for production deployment (HTTPS) with IP address..."
+    
+    # Get server IP address
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+    echo "Detected server IP: $SERVER_IP"
+    read -p "Use this IP address? [Y/n]: " use_detected_ip
+    
+    if [[ "$use_detected_ip" = "n" || "$use_detected_ip" = "N" ]]; then
+        read -p "Enter your server's IP address: " SERVER_IP
+    fi
+    
+    # Set domain to IP address
+    DOMAIN="$SERVER_IP"
+    sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
+    
+    # Update docker-compose.yml for HTTPS
+    sed -i 's/GITEA__server__PROTOCOL=http/GITEA__server__PROTOCOL=https/g' docker-compose.yml
+    sed -i 's|GITEA__server__ROOT_URL=http://|GITEA__server__ROOT_URL=https://|g' docker-compose.yml
+    sed -i 's|ROOT_URL=http://\${DOMAIN}:3000/|ROOT_URL=https://\${DOMAIN}/|g' docker-compose.yml
+    
+    # Add HTTPS-specific environment variables if they don't exist
+    if ! grep -q "GITEA__server__CERT_FILE" docker-compose.yml; then
+        sed -i '/GITEA__server__PROTOCOL=https/a\      - GITEA__server__CERT_FILE=/data/gitea/cert/cert.pem\n      - GITEA__server__KEY_FILE=/data/gitea/cert/key.pem' docker-compose.yml
+    fi
+    
+    # Update port mapping
+    sed -i 's/"3000:3000"/"443:3000"/g' docker-compose.yml
+    
+    # Generate self-signed certificates for IP address
+    echo "Generating SSL certificates for IP address $SERVER_IP..."
+    openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
+        -keyout certs/key.pem -out certs/cert.pem \
+        -subj "/CN=$SERVER_IP" \
+        -addext "subjectAltName=IP:$SERVER_IP"
+    
+    # Fix certificates permissions
+    chmod 600 certs/key.pem
+    chmod 644 certs/cert.pem
+    
+    echo "Certificates generated successfully."
+    echo "Your Gitea instance will be available at: https://$SERVER_IP"
+    echo "Note: Since this uses an IP address with a self-signed certificate, you will need to accept the security warning in your browser."
     
 else
-    echo "Configuring for production deployment (HTTPS)..."
+    echo "Configuring for production deployment (HTTPS) with domain name..."
+    
+    # Ask user to confirm or update domain settings
+    read -p "Domain for Gitea [$DOMAIN]: " input_domain
+    DOMAIN=${input_domain:-$DOMAIN}
+    sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
     
     # Update docker-compose.yml for HTTPS
     sed -i 's/GITEA__server__PROTOCOL=http/GITEA__server__PROTOCOL=https/g' docker-compose.yml
@@ -134,6 +223,12 @@ echo
 
 if [ "$deployment_type" = "1" ]; then
     echo "Your local Gitea instance should now be available at: http://$DOMAIN:3000"
+elif [ "$deployment_type" = "2" ]; then
+    echo "Your local Gitea instance should now be available at: https://localhost"
+    echo "Note: You will need to accept the self-signed certificate warning in your browser."
+elif [ "$deployment_type" = "4" ]; then
+    echo "Your production Gitea instance should now be available at: https://$SERVER_IP"
+    echo "Note: Since this uses an IP address with a self-signed certificate, you will need to accept the security warning in your browser."
 else
     echo "Your production Gitea instance should now be available at: https://$DOMAIN"
     echo "Note: You'll need to configure your DNS to point to your server's IP address"
