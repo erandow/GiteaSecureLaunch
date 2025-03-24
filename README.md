@@ -60,33 +60,44 @@ Modify the following settings:
 
 The script will automatically configure Gitea based on your selection.
 
-### Local Development (HTTP)
+## Deployment Options
 
-- HTTP protocol on port 3000
-- Uses localhost or custom local domain
-- No SSL certificates required
+This deployment supports multiple configurations which are managed through separate Docker Compose files:
 
-### Local HTTPS with localhost
+1. **Local Development (HTTP)** - Uses `docker-compose.local.yml`
 
-- HTTPS protocol on port 443
-- Uses localhost with self-signed certificates
-- No custom domain required
-- Secure local development
+   - Accessible via HTTP on port 3000
+   - Suitable for local development environments
+   - No SSL certificates required
 
-### Production Server with Domain
+2. **Local HTTPS with Localhost** - Uses `docker-compose.localhost-https.yml`
 
-- HTTPS protocol on port 443
-- Requires domain name
-- Self-signed or Let's Encrypt certificates
-- Full security features
+   - Accessible via HTTPS on port 443
+   - Uses self-signed certificates for localhost
+   - Suitable for testing HTTPS functionality locally
 
-### Production Server with IP Address
+3. **Production with Domain Name** - Uses `docker-compose.domain.yml`
 
-- HTTPS protocol on port 443
-- Uses your server's IP address
-- Self-signed certificates for your IP
-- No domain name required
-- Full security features
+   - Accessible via HTTPS on port 443
+   - Supports both self-signed certificates and Let's Encrypt
+   - Proper domain name required
+   - Includes HTTP to HTTPS redirection
+
+4. **Production with IP Address** - Uses `docker-compose.ip.yml`
+   - Accessible via HTTPS on port 443
+   - Uses self-signed certificates for IP address
+   - Suitable for servers without domain names
+
+### How it Works
+
+When you run the `deploy.sh` script, you'll be prompted to select a deployment type. Based on your selection, the script will:
+
+1. Update the `.env` file with appropriate values
+2. Generate SSL certificates if needed
+3. Create a symbolic link from the appropriate docker-compose file to `docker-compose.yml`
+4. Start the containers using the selected configuration
+
+This approach keeps the configuration for each deployment scenario separate and avoids the need to modify configuration files with sed commands.
 
 ## Post-Installation
 

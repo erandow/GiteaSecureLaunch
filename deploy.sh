@@ -39,24 +39,9 @@ echo "3) Production server with domain name (HTTPS, port 443)"
 echo "4) Production server with IP address (HTTPS, port 443)"
 read -p "Select deployment type [1/2/3/4]: " deployment_type
 
-# Create a backup of docker-compose.yml
-cp docker-compose.yml docker-compose.yml.bak
-
+# Create a symlink to the appropriate docker-compose file
 if [ "$deployment_type" = "1" ]; then
     echo "Configuring for local development (HTTP)..."
-    
-    # Update docker-compose.yml for HTTP
-    sed -i 's/GITEA__server__PROTOCOL=https/GITEA__server__PROTOCOL=http/g' docker-compose.yml
-    sed -i 's|GITEA__server__ROOT_URL=https://|GITEA__server__ROOT_URL=http://|g' docker-compose.yml
-    sed -i 's|ROOT_URL=https://\${DOMAIN}/|ROOT_URL=http://\${DOMAIN}:3000/|g' docker-compose.yml
-    sed -i 's|ROOT_URL=http://\${DOMAIN}/|ROOT_URL=http://\${DOMAIN}:3000/|g' docker-compose.yml
-    
-    # Remove HTTPS-specific environment variables
-    sed -i '/GITEA__server__CERT_FILE/d' docker-compose.yml
-    sed -i '/GITEA__server__KEY_FILE/d' docker-compose.yml
-    
-    # Update port mapping
-    sed -i 's/"443:3000"/"3000:3000"/g' docker-compose.yml
     
     # Set domain to localhost if not specified
     read -p "Domain for Gitea [$DOMAIN] (or leave empty for 'localhost'): " input_domain
@@ -73,6 +58,9 @@ if [ "$deployment_type" = "1" ]; then
         fi
     fi
     
+    # Use the local development docker-compose file
+    ln -sf docker-compose.local.yml docker-compose.yml
+    
     echo "Local development configuration complete!"
     echo "Your Gitea instance will be available at: http://$DOMAIN:3000"
 
@@ -82,19 +70,6 @@ elif [ "$deployment_type" = "2" ]; then
     # Set domain to localhost
     DOMAIN="localhost"
     sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
-    
-    # Update docker-compose.yml for HTTPS
-    sed -i 's/GITEA__server__PROTOCOL=http/GITEA__server__PROTOCOL=https/g' docker-compose.yml
-    sed -i 's|GITEA__server__ROOT_URL=http://|GITEA__server__ROOT_URL=https://|g' docker-compose.yml
-    sed -i 's|ROOT_URL=http://\${DOMAIN}:3000/|ROOT_URL=https://\${DOMAIN}/|g' docker-compose.yml
-    
-    # Add HTTPS-specific environment variables if they don't exist
-    if ! grep -q "GITEA__server__CERT_FILE" docker-compose.yml; then
-        sed -i '/GITEA__server__PROTOCOL=https/a\      - GITEA__server__CERT_FILE=/data/gitea/cert/cert.pem\n      - GITEA__server__KEY_FILE=/data/gitea/cert/key.pem' docker-compose.yml
-    fi
-    
-    # Update port mapping
-    sed -i 's/"3000:3000"/"443:3000"/g' docker-compose.yml
     
     # Generate self-signed certificates for localhost
     echo "Generating SSL certificates for localhost..."
@@ -106,6 +81,9 @@ elif [ "$deployment_type" = "2" ]; then
     # Fix certificates permissions
     chmod 600 certs/key.pem
     chmod 644 certs/cert.pem
+    
+    # Use the localhost HTTPS docker-compose file
+    ln -sf docker-compose.localhost-https.yml docker-compose.yml
     
     echo "Certificates generated successfully."
     echo "Your Gitea instance will be available at: https://localhost"
@@ -127,19 +105,6 @@ elif [ "$deployment_type" = "4" ]; then
     DOMAIN="$SERVER_IP"
     sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
     
-    # Update docker-compose.yml for HTTPS
-    sed -i 's/GITEA__server__PROTOCOL=http/GITEA__server__PROTOCOL=https/g' docker-compose.yml
-    sed -i 's|GITEA__server__ROOT_URL=http://|GITEA__server__ROOT_URL=https://|g' docker-compose.yml
-    sed -i 's|ROOT_URL=http://\${DOMAIN}:3000/|ROOT_URL=https://\${DOMAIN}/|g' docker-compose.yml
-    
-    # Add HTTPS-specific environment variables if they don't exist
-    if ! grep -q "GITEA__server__CERT_FILE" docker-compose.yml; then
-        sed -i '/GITEA__server__PROTOCOL=https/a\      - GITEA__server__CERT_FILE=/data/gitea/cert/cert.pem\n      - GITEA__server__KEY_FILE=/data/gitea/cert/key.pem' docker-compose.yml
-    fi
-    
-    # Update port mapping
-    sed -i 's/"3000:3000"/"443:3000"/g' docker-compose.yml
-    
     # Generate self-signed certificates for IP address
     echo "Generating SSL certificates for IP address $SERVER_IP..."
     openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
@@ -151,63 +116,84 @@ elif [ "$deployment_type" = "4" ]; then
     chmod 600 certs/key.pem
     chmod 644 certs/cert.pem
     
-    echo "Certificates generated successfully."
-    echo "Your Gitea instance will be available at: https://$SERVER_IP"
-    echo "Note: Since this uses an IP address with a self-signed certificate, you will need to accept the security warning in your browser."
+    # Use the IP address docker-compose file
+    ln -sf docker-compose.ip.yml docker-compose.yml
     
-else
+    echo "Your Gitea instance will be available at: https://$SERVER_IP"
+    echo "Note: You will need to accept the self-signed certificate warning in your browser."
+
+elif [ "$deployment_type" = "3" ]; then
     echo "Configuring for production deployment (HTTPS) with domain name..."
     
-    # Ask user to confirm or update domain settings
-    read -p "Domain for Gitea [$DOMAIN]: " input_domain
-    DOMAIN=${input_domain:-$DOMAIN}
+    # Get domain name
+    read -p "Enter your domain name (e.g., git.example.com): " DOMAIN_NAME
+    
+    # Set domain
+    DOMAIN="$DOMAIN_NAME"
     sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" .env
     
-    # Update docker-compose.yml for HTTPS
-    sed -i 's/GITEA__server__PROTOCOL=http/GITEA__server__PROTOCOL=https/g' docker-compose.yml
-    sed -i 's|GITEA__server__ROOT_URL=http://|GITEA__server__ROOT_URL=https://|g' docker-compose.yml
-    sed -i 's|ROOT_URL=http://\${DOMAIN}:3000/|ROOT_URL=https://\${DOMAIN}/|g' docker-compose.yml
+    # Ask if user wants to generate self-signed or use Let's Encrypt
+    echo
+    echo "SSL Certificate Options:"
+    echo "1) Self-signed certificate (for testing)"
+    echo "2) Let's Encrypt (requires domain to point to this server)"
+    read -p "Select certificate type [1/2]: " cert_type
     
-    # Add HTTPS-specific environment variables if they don't exist
-    if ! grep -q "GITEA__server__CERT_FILE" docker-compose.yml; then
-        sed -i '/GITEA__server__PROTOCOL=https/a\      - GITEA__server__CERT_FILE=/data/gitea/cert/cert.pem\n      - GITEA__server__KEY_FILE=/data/gitea/cert/key.pem' docker-compose.yml
+    if [ "$cert_type" = "1" ]; then
+        # Generate self-signed certificates for domain
+        echo "Generating self-signed SSL certificates for domain $DOMAIN..."
+        openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
+            -keyout certs/key.pem -out certs/cert.pem \
+            -subj "/CN=$DOMAIN" \
+            -addext "subjectAltName=DNS:$DOMAIN"
+        
+        # Fix certificates permissions
+        chmod 600 certs/key.pem
+        chmod 644 certs/cert.pem
+        
+        echo "Self-signed certificates generated successfully."
+        echo "Note: You will need to accept the self-signed certificate warning in your browser."
+    else
+        # We'll use Let's Encrypt, which requires further setup
+        echo "Let's Encrypt setup requires domain to be properly configured to point to this server."
+        echo "Please make sure your domain $DOMAIN points to this server before continuing."
+        read -p "Press Enter to continue or Ctrl+C to abort..."
+        
+        # Check if certbot is installed
+        if ! command -v certbot &> /dev/null; then
+            echo "Installing Certbot..."
+            apt-get update
+            apt-get install -y certbot
+        fi
+        
+        # Get certificates using certbot standalone mode
+        echo "Obtaining Let's Encrypt certificates..."
+        certbot certonly --standalone --agree-tos --email admin@$DOMAIN -d $DOMAIN
+        
+        # Copy certificates to the right location
+        cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem certs/cert.pem
+        cp /etc/letsencrypt/live/$DOMAIN/privkey.pem certs/key.pem
+        
+        # Fix permissions
+        chmod 644 certs/cert.pem
+        chmod 600 certs/key.pem
+        
+        echo "Let's Encrypt certificates obtained successfully."
+        
+        # Set up auto-renewal
+        echo "Setting up certificate auto-renewal..."
+        (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --post-hook \"cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem /home/$(whoami)/Project/gitea-deployment/certs/cert.pem && cp /etc/letsencrypt/live/$DOMAIN/privkey.pem /home/$(whoami)/Project/gitea-deployment/certs/key.pem && chmod 644 /home/$(whoami)/Project/gitea-deployment/certs/cert.pem && chmod 600 /home/$(whoami)/Project/gitea-deployment/certs/key.pem && docker compose restart gitea\"") | crontab -
+        
+        echo "Certificate auto-renewal configured."
     fi
     
-    # Update port mapping
-    sed -i 's/"3000:3000"/"443:3000"/g' docker-compose.yml
+    # Use the domain docker-compose file
+    ln -sf docker-compose.domain.yml docker-compose.yml
     
-    # Generate self-signed certificates
-    echo "Generating SSL certificates for $DOMAIN..."
-    openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
-        -keyout certs/key.pem -out certs/cert.pem \
-        -subj "/CN=$DOMAIN" \
-        -addext "subjectAltName=DNS:$DOMAIN,DNS:www.$DOMAIN,IP:127.0.0.1"
-    
-    # Fix certificates permissions
-    chmod 600 certs/key.pem
-    chmod 644 certs/cert.pem
-    
-    echo "Certificates generated successfully."
     echo "Your Gitea instance will be available at: https://$DOMAIN"
-    
-    # Ask about Let's Encrypt
-    read -p "Would you like to set up Let's Encrypt certificates now? [y/N]: " setup_letsencrypt
-    if [[ "$setup_letsencrypt" = "y" || "$setup_letsencrypt" = "Y" ]]; then
-        echo "Setting up Let's Encrypt..."
-        ./configure.sh # The configure.sh script already has Let's Encrypt setup option
-    fi
-fi
 
-# Ensure the right volumes are in place
-if grep -q "GITEA__server__PROTOCOL=https" docker-compose.yml; then
-    # Ensure certs volume is mounted
-    if ! grep -q "./certs:/data/gitea/cert" docker-compose.yml; then
-        sed -i '/volumes:/a\      - ./certs:/data/gitea/cert' docker-compose.yml
-    fi
-else
-    # Remove certs volume if not needed
-    sed -i '/\.\/certs:\/data\/gitea\/cert/d' docker-compose.yml
-fi
+# Remove the checks to adjust volumes since we now use dedicated files
+# that already have the correct volume mounts
 
 # Pull latest Docker images
 echo "Pulling latest Docker images..."
