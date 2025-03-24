@@ -13,11 +13,11 @@ services:
       - GITEA__database__USER=${POSTGRES_USER}
       - GITEA__database__PASSWD=${POSTGRES_PASSWORD}
       - GITEA__server__DOMAIN=${DOMAIN}
-      - GITEA__server__ROOT_URL=http://${DOMAIN}:3000/
+      - GITEA__server__ROOT_URL=https://${DOMAIN}:8443/
       - GITEA__server__SSH_DOMAIN=${DOMAIN}
       - GITEA__server__SSH_PORT=2222
       - GITEA__server__SSH_LISTEN_PORT=22
-      - GITEA__server__PROTOCOL=http
+      - GITEA__server__PROTOCOL=https
     restart: always
     volumes:
       - ./gitea_data:/data
@@ -26,6 +26,7 @@ services:
     ports:
       - "3000:3000"
       - "2222:22"
+      - "8443:443"
     depends_on:
       - db
     networks:
